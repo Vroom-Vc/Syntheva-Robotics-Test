@@ -1,0 +1,91 @@
+{
+    "robot_functions": [
+        {
+            "name": "move_joint",
+            "description": "Moves a specified joint (head or arm) along a specific axis by a given degree. This is the low-level kinematic command. Positive degrees typically mean LEFT/UP/OUT; negative degrees mean RIGHT/DOWN/IN.",
+            "arguments": {
+                "joint_name": {
+                    "type": "string",
+                    "valid_values": [
+                        "RIGHT_ARM",
+                        "LEFT_ARM"
+                    ],
+                    "description": "The major body part the command applies to."
+                },
+                "axis": {
+                    "type": "string",
+                    "valid_values": [
+                        "YAW",
+                        "PITCH",
+                        "ROLL"
+                    ],
+                    "description": "The specific axis of rotation (e.g., YAW for side-to-side joint movement, PITCH for up-and-down joint movement, ELBOW for arm bending)."
+                },
+                "degree": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 180
+                }
+            }
+        },
+        {
+            "name": "move_head",
+            "description": "Moves a specified joint (head or arm) along a specific axis by a given degree. This is the low-level kinematic command. Positive degrees typically mean LEFT/UP/OUT; negative degrees mean RIGHT/DOWN/IN.",
+            "arguments": {
+                "axis": {
+                    "type": "string",
+                    "valid_values": [
+                        "YAW",
+                        "PITCH",
+                        "ROLL",
+                        "ELBOW",
+                        "SHOULDER_LIFT",
+                        "SHOULDER_SWING"
+                    ],
+                    "description": "The specific axis of rotation (e.g., YAW for side-to-side head movement, PITCH for up-and-down head movement, ELBOW for arm bending)."
+                },
+                "degree": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 180
+                }
+            }
+        },
+        {
+            "name": "express_emotion",
+            "description": "Activates complex or non-kinematic emotional/facial systems (e.g., LED color, sound, predefined short sequence like nodding).",
+            "arguments": {
+                "emotion": {
+                    "type": "string",
+                    "valid_values": [
+                        "SMILE",
+                        "NOD",
+                        "SHAKE_HEAD",
+                        "FROWN"
+                    ],
+                    "description": "The desired symbolic emotion or short, complex action."
+                }
+            }
+        },
+        {
+            "name": "say_text",
+            "description": "Generates a spoken response. This should be used if the LLM cannot perform a physical action but needs to respond.",
+            "arguments": {
+                "text": {
+                    "type": "string",
+                    "description": "The exact text to be spoken."
+                }
+            }
+        },
+        {
+            "name": "report_error",
+            "description": "Signals to the Behavior Manager that the user command is impossible, dangerous, or completely ambiguous.",
+            "arguments": {
+                "reason": {
+                    "type": "string",
+                    "description": "A brief explanation of why the command cannot be executed."
+                }
+            }
+        }
+    ]
+}
