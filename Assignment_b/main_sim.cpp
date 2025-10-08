@@ -72,56 +72,57 @@ void run_simulation() {
     const float KF_R_POS = 1.0f;       // Measurement noise covariance (Position)
     KalmanFilter kf(DT, KF_Q_POS, KF_Q_VEL, KF_R_POS);
     
-    // b) Velocity Controller Parameters
-    const float MAX_ACCELERATION = 720.0f; // Limit acceleration to 720 deg/s^2
-    VelocityController vel_ramp(DT, MAX_ACCELERATION);
+
+    // b) Motion Planner
+    MotionPlanner planner;
+    planner.set_target(TARGET_DISPLACEMENT, MOTION_DURATION); 
 
     // c) PID Controller Parameters
     const float KP = 0.15f;            // Proportional Gain
     const float KI = 5.0f;             // Integral Gain
-    const float KD = 0.001f;           // Derivative Gain (on measurement)
-    const float MAX_CURRENT = 10.0f;   // Max output current command (A)
-    const float INTEGRAL_LIMIT = 5.0f; // Anti-windup limit
-    PIDController pid(DT, KP, KI, KD, MAX_CURRENT, INTEGRAL_LIMIT);
+    const float KD = 0.001f;           // Derivative Gain
+    const float MAX_NORMALIZED_OUTPUT = 1.0f; // Limit the control signal to +/- 1.0
+    const float INTEGRAL_LIMIT = 5.0f; 
+    
+    // PID outputs the normalized control signal
+    PIDController pid(DT, KP, KI, KD, MAX_NORMALIZED_OUTPUT, INTEGRAL_LIMIT);
 
     // d) Motor Model (The physical system)
     const float MOTOR_SENSOR_NOISE_STD = 0.1f; // 0.1 degrees of sensor noise
     MotorModel motor;
 
     // Initial target velocity
-    float target_velocity = 0.0f; 
+    float motion_elapsed_time = 0.0f;
 
     // --- 4. Main Simulation Loop ---
     std::cout << "Starting Motor Control Simulation " << std::endl;
 
     for (int i = 0; i < NUM_STEPS; ++i) {
+
         float current_time = i * DT;
 
-        // Step 4a: Define Target Profile (Step change at 1.0s)
-        if (current_time >= STEP_CHANGE_TIME && target_velocity == 0.0f) {
-            target_velocity = 360.0f; // Target 1 full rotation per second
+        // Step 4a: Motion Planning
+        float ramped_velocity = 0.0f;
+        if (current_time >= MOTION_START_TIME) {
+            // Update elapsed time for the current motion
+            motion_elapsed_time += DT;
+            
+            // Get the velocity command from the pre-calculated S-curve profile
+            ramped_velocity = planner.update(motion_elapsed_time);
         }
 
-        // Step 4b: Velocity Ramping
-        float ramped_velocity = vel_ramp.update(target_velocity);
-
-        // Step 4c: Motor Update and Measurement
-        float measured_position = motor.update(pid.update(ramped_velocity, motor.velocity_dps), DT, MOTOR_SENSOR_NOISE_STD);
-        // NOTE: In this simplified loop, we use the motor's true velocity in the PID. 
-        // A more rigorous loop would use the Kalman filter output as the measured_value.
-        // Let's correct this and use the Kalman Filter for *both* velocity and position.
-
-        // Step 4d: State Estimation (Kalman Filter)
-        kf.update(measured_position, motor.position_deg); // Measured position for correction
-
-        // Get the estimated velocity from the Kalman Filter
+        // Step 4b: State Estimation (Kalman Filter)
+        // We first update the motor with 0 current to get the noisy measurement of the previous state
+        float measured_position = motor.update(0.0f, 0.0f, MOTOR_SENSOR_NOISE_STD); 
+        kf.update(measured_position, motor.position_deg); 
         float estimated_velocity = kf.get_estimated_velocity();
         
-        // Step 4e: PID Control (Using ramped velocity and estimated velocity)
-        float current_command = pid.update(ramped_velocity, estimated_velocity);
+        // Step 4c: PID Control - Output the **normalized control signal**
+        float control_signal = pid.update(ramped_velocity, estimated_velocity);
         
-        // Step 4f: Motor Update (The motor is driven by the PID output current)
-        motor.update(current_command, DT, MOTOR_SENSOR_NOISE_STD);
+        // Step 4d: Motor Update - The motor model scales the normalized signal to real physics
+        // We use the control signal to drive the motor over the current time step DT
+        motor.update(control_signal, DT, MOTOR_SENSOR_NOISE_STD);
 
 
         // Data Logging
@@ -129,7 +130,7 @@ void run_simulation() {
             float error = ramped_velocity - estimated_velocity;
 
             std::cout << current_time << " | " 
-                      << target_velocity << " | " 
+                      << motor.position_deg << " | " 
                       << ramped_velocity << " | " 
                       << current_command << " | " 
                       << motor.velocity_dps << " | "

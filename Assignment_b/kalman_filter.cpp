@@ -1,155 +1,75 @@
 #include "kalman_filter.hpp"
-#include <cmath> 
+#include <iostream>
 
 /**
  * @file kalman_filter.cpp
- * @brief Implementation of the KalmanFilter class using specialized 2x2 matrix math 
- * for performance in an embedded environment.
+ * @brief Implementation of a simple 2D (Position/Velocity) Kalman Filter.
  */
 
-// --- Helper Matrix Operations (Specialized for 2x2 Matrices) ---
+KalmanFilter::KalmanFilter(float dt, float q_pos, float q_vel, float r_pos) 
+    : dt_(dt), R_pos_(r_pos) {
+    // Initialize Covariance P (Start with high uncertainty)
+    P_[0][0] = 1000.0f; P_[0][1] = 0.0f;
+    P_[1][0] = 0.0f; P_[1][1] = 1000.0f;
 
-// Helper function for matrix multiplication (2x2 * 2x2)
-void KalmanFilter::multiply_2x2(const float a[2][2], const float b[2][2], float result[2][2]) {
-}
-
-// Helper function for matrix transposition (2x2)
-void KalmanFilter::transpose_2x2(const float a[2][2], float result[2][2]) {
-    
-}
-
-// Helper function for matrix addition (2x2)
-void KalmanFilter::add_2x2(const float a[2][2], const float b[2][2], float result[2][2]) {
-    
-}
-
-// Helper function for matrix subtraction (2x2)
-void KalmanFilter::subtract_2x2(const float a[2][2], const float b[2][2], float result[2][2]) {
-    
-}
-
-// Helper function for matrix inversion (2x2)
-
-bool KalmanFilter::inverse_2x2(const float a[2][2], float result[2][2]) {
-    
+    // Initialize Process Noise Q
+    Q_ = {{q_pos, 0.0f}, {0.0f, q_vel}};
 }
 
 /**
- * @brief Initializes the Kalman Filter with time step and noise characteristics.
- * @param dt The time step (seconds) of the control loop.
- * @param process_noise_q Scalar representing uncertainty in the model (Q).
- * @param measurement_noise_r Scalar representing sensor noise (R).
+ * @brief Updates the filter with a new position measurement.
  */
-KalmanFilter::KalmanFilter(float dt, float process_noise_q, float measurement_noise_r) 
-    : dt_(dt), R_(measurement_noise_r) {
+void KalmanFilter::update(float measured_position, float true_position) {
+    // --- 1. Prediction Step ---
+    // State transition matrix F (constant velocity model)
+    // F = [[1, dt], [0, 1]]
     
-    // 1. Initialize State Vector X = [Position, Velocity]
-    state_x_[0] = 0.0f; // Initial position (degrees)
-    state_x_[1] = 0.0f; // Initial velocity (degrees/s)
+    // Predict new state X_ = F * X_
+    // X_[0] (Position) = X_[0] + X_[1] * dt
+    // X_[1] (Velocity) = X_[1] (constant)
+    X_[0] += X_[1] * dt_;
 
-    // 2. Initialize State Transition Matrix A (Constant Velocity Model)
-    // A = [[1, dt], [0, 1]]
-    A_[0][0] = 1.0f; A_[0][1] = dt_;
-    A_[1][0] = 0.0f; A_[1][1] = 1.0f;
+    // Predict covariance P_ = F * P * F' + Q
+    float p00_temp = P_[0][0];
+    float p01_temp = P_[0][1];
+    float p10_temp = P_[1][0];
+    float p11_temp = P_[1][1];
 
-    // 3. Initialize Error Covariance Matrix P (Start with high uncertainty)
-    // P = [[100, 0], [0, 100]]
-    P_[0][0] = 100.0f; P_[0][1] = 0.0f;
-    P_[1][0] = 0.0f; P_[1][1] = 100.0f;
-
-    // 4. Initialize Process Noise Covariance Matrix Q (Modeling uncertainty in acceleration)
-    // Q is derived from process_noise_q, assuming noise affects acceleration (a)
-    // Q = [[(dt^4)/4, (dt^3)/2], [(dt^3)/2, dt^2]] * process_noise_q
-    float dt2 = dt_ * dt_;
-    float dt3 = dt2 * dt_;
-    float dt4 = dt3 * dt_;
-
-    Q_[0][0] = (dt4 / 4.0f) * process_noise_q;
-    Q_[0][1] = (dt3 / 2.0f) * process_noise_q;
-    Q_[1][0] = (dt3 / 2.0f) * process_noise_q;
-    Q_[1][1] = dt2 * process_noise_q;
-}
-
-
-/**
- * @brief Executes the Kalman Filter prediction and update steps.
- * @param raw_measurement The latest raw position reading from the sensor.
- * @return The filtered position estimate.
- */
-float KalmanFilter::update(float raw_measurement) {
-    // --- PREDICTION STEP (Project state and covariance ahead) ---
+    P_[0][0] = p00_temp + dt_ * (p10_temp + p01_temp) + dt_ * dt_ * p11_temp + Q_[0][0];
+    P_[0][1] = p01_temp + dt_ * p11_temp;
+    P_[1][0] = p10_temp + dt_ * p11_temp;
+    P_[1][1] = p11_temp + Q_[1][1];
     
-    // 1. Predict State: X_k = A * X_{k-1} 
-    // Optimization: Matrix-Vector multiplication with A = [[1, dt], [0, 1]]
-    float predicted_pos = state_x_[0] + dt_ * state_x_[1];
-    float predicted_vel = state_x_[1]; // Velocity remains constant in prediction
+    // --- 2. Update Step ---
+    // Measurement matrix H = [1, 0] (We only measure position)
     
-    state_x_[0] = predicted_pos;
-    state_x_[1] = predicted_vel;
+    // Calculate Kalman Gain K = P * H' * (H * P * H' + R)^-1
+    // The measurement residual covariance S = H * P * H' + R = P[0][0] + R_pos
+    float S = P_[0][0] + R_pos_;
 
-    // 2. Predict Covariance: P_k = A * P_{k-1} * A_T + Q
-    
-    // Temporary matrices for calculation
-    float P_temp1[2][2]; // A * P_{k-1}
-    float P_temp2[2][2]; // P_{k-1} * A_T
-    float A_T[2][2];     // A transpose
-
-    // Calculate A_T
-    transpose_2x2(A_, A_T);
-
-    // Calculate A * P_{k-1}
-    multiply_2x2(A_, P_, P_temp1); 
-
-    // Calculate (A * P_{k-1}) * A_T 
-    multiply_2x2(P_temp1, A_T, P_temp2); 
-
-    // P_k = P_temp2 + Q
-    add_2x2(P_temp2, Q_, P_);
-
-
-    // --- UPDATE (CORRECTION) STEP (Incorporate measurement) ---
-
-    // 1. Calculate Innovation Covariance (S) 
-    // S = H * P_k * H_T + R. Since H = [1, 0], H * P * H_T simplifies to P[0][0].
-    // S is a scalar.
-    float S = P_[0][0] + R_;
-
-    // Handle singularity (shouldn't happen with R > 0, but good practice)
-    if (std::abs(S) < 1e-6f) {
-        return state_x_[0]; // Return predicted state if gain calculation is unstable
+    if (S < 1e-6) {
+        // Avoid division by zero, treat as no update
+        return; 
     }
-    
-    // S inverse
-    float S_inv = 1.0f / S;
 
-    // 2. Calculate Kalman Gain (K) 
-    // K = P_k * H_T * S_inv. P * H_T is the first column of P. K is 2x1.
-    float K[2];
-    K[0] = P_[0][0] * S_inv;
-    K[1] = P_[1][0] * S_inv;
-    
-    // 3. Calculate Innovation (y) 
-    // y = Z - H * X_k. Since H = [1, 0], H * X_k = X_k[0]. y is a scalar.
-    float innovation_y = raw_measurement - state_x_[0];
+    // Kalman Gain K = [ K0; K1 ]
+    float K0 = P_[0][0] / S;
+    float K1 = P_[1][0] / S;
 
-    // 4. Update State Estimate: X_k = X_k + K * y
-    state_x_[0] = state_x_[0] + K[0] * innovation_y;
-    state_x_[1] = state_x_[1] + K[1] * innovation_y;
+    // Update state X = X + K * y
+    // y (Innovation/Residual) = measured_position - H * X = measured_position - X[0]
+    float innovation = measured_position - X_[0];
+    X_[0] += K0 * innovation;
+    X_[1] += K1 * innovation;
 
-    // 5. Update Error Covariance: P_k = (I - K * H) * P_k
-    // Calculate I - K * H (KH is 2x2 matrix)
-    float I_minus_KH[2][2];
-    I_minus_KH[0][0] = 1.0f - K[0] * H_[0]; // 1 - K[0]
-    I_minus_KH[0][1] = 0.0f - K[0] * H_[1]; // 0
-    I_minus_KH[1][0] = 0.0f - K[1] * H_[0]; // -K[1]
-    I_minus_KH[1][1] = 1.0f - K[1] * H_[1]; // 1
+    // Update covariance P = (I - K * H) * P
+    float p00_new = (1.0f - K0) * P_[0][0];
+    float p01_new = (1.0f - K0) * P_[0][1];
+    float p10_new = -K1 * P_[0][0] + P_[1][0];
+    float p11_new = -K1 * P_[0][1] + P_[1][1];
 
-    // P_k = (I - K * H) * P_k
-    float P_new[2][2];
-    multiply_2x2(I_minus_KH, P_, P_new);
-    P_[0][0] = P_new[0][0]; P_[0][1] = P_new[0][1];
-    P_[1][0] = P_new[1][0]; P_[1][1] = P_new[1][1];
-
-    // Return the new filtered position
-    return state_x_[0];
+    P_[0][0] = p00_new;
+    P_[0][1] = p01_new;
+    P_[1][0] = p10_new;
+    P_[1][1] = p11_new;
 }
