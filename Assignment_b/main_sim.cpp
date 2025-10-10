@@ -89,6 +89,7 @@ void run_simulation() {
 
     // d) Motor Model (The physical system)
     const float MOTOR_SENSOR_NOISE_STD = 0.1f; // 0.1 degrees of sensor noise
+    const float MAX_PHYSICAL_SPEED_DPS = 360.0f; 
     MotorModel motor;
 
     // Initial target velocity
@@ -117,8 +118,11 @@ void run_simulation() {
         kf.update(measured_position, motor.position_deg); 
         float estimated_velocity = kf.get_estimated_velocity();
         
-        // Step 4c: PID Control - Output the **normalized control signal**
+
+        // Step 4c: PID Control - Output the normalized control signal
         float control_signal = pid.update(ramped_velocity, estimated_velocity);
+
+        control_signal = control_signal / MAX_PHYSICAL_SPEED_DPS; // normalize the signal to range (-1,1)
         
         // Step 4d: Motor Update - The motor model scales the normalized signal to real physics
         // We use the control signal to drive the motor over the current time step DT

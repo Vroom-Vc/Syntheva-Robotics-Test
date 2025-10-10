@@ -7,8 +7,8 @@
  * @brief Implementation of the PIDController class.
  */
 
-PIDController::PIDController(float dt, float kp, float ki, float kd, float max_output, float integral_limit)
-    : dt_(dt), kp_(kp), ki_(ki), kd_(kd), max_output_(max_output), integral_limit_(integral_limit) {}
+PIDController::PIDController(float kp, float ki, float kd, float max_output, float integral_limit)
+    : kp_(kp), ki_(ki), kd_(kd), max_output_(max_output), integral_limit_(integral_limit) {}
 
 /**
  * @brief Calculates the normalized control signal.
@@ -21,13 +21,13 @@ float PIDController::update(float setpoint, float measurement) {
     float p_term = kp_ * error;
 
     // 3. Integral Term (with Anti-Windup)
-    integral_sum_ += error * dt_;
+    integral_sum_ += error;
     integral_sum_ = std::min(integral_limit_, std::max(-integral_limit_, integral_sum_));
     float i_term = ki_ * integral_sum_;
 
     // 4. Derivative Term (Applied on the measurement, not the error)
     // d(measurement)/dt approx (measurement - last_measurement) / dt
-    float d_measurement = (measurement - last_measurement_) / dt_;
+    float d_measurement = last_error_-error;
     float d_term = -kd_ * d_measurement;
     
     // 5. Total Control Output (Current is normalized to 1.0 here)
@@ -38,6 +38,7 @@ float PIDController::update(float setpoint, float measurement) {
 
     // 7. Update History
     last_measurement_ = measurement;
+    last_error_ = error;
 
     return output;
 }
